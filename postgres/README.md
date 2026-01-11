@@ -23,7 +23,7 @@ This starter is a template for a Next.js project that uses Workflow DevKit with 
 3. Run the database migration to setup postgres
 
     ```bash
-     WORKFLOW_POSTGRES_URL="postgresql://postgres:<REDACTED>@shuttle.proxy.rlwy.net:43654/railway" bunx workflow-postgres-setup
+     WORKFLOW_POSTGRES_URL="postgresql://<username>:<password>@<host>:<port>/<database>" bunx workflow-postgres-setup
     ```
 
     > This needs to be run whenever you update the @workflow/world-postgres package to update your schemas to the latest version.

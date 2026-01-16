@@ -90,7 +90,9 @@ export function useMultiTurnChat<
   // Track whether we should resume an existing session
   const [shouldResume, setShouldResume] = useState(false);
   // Track user messages from data markers
-  const userMessagesRef = useRef<Map<string, UIMessage<TMetadata, UIDataTypes>>>(new Map());
+  const userMessagesRef = useRef<
+    Map<string, UIMessage<TMetadata, UIDataTypes>>
+  >(new Map());
   // Track sent follow-ups to avoid duplicates
   const sentFollowUpsRef = useRef<Set<string>>(new Set());
 
@@ -212,7 +214,10 @@ export function useMultiTurnChat<
               }
 
               // Skip if we already have this user message (from optimistic send or duplicate)
-              if (seenUserMessageIds.has(data.id) || seenUserMessageContent.has(data.content)) {
+              if (
+                seenUserMessageIds.has(data.id) ||
+                seenUserMessageContent.has(data.content)
+              ) {
                 continue;
               }
               seenUserMessageIds.add(data.id);
@@ -272,7 +277,9 @@ export function useMultiTurnChat<
       if (!response.ok) {
         sentFollowUpsRef.current.delete(sendKey);
         const errorData = await response.json();
-        throw new Error(errorData.details || 'Failed to send follow-up message');
+        throw new Error(
+          errorData.details || 'Failed to send follow-up message'
+        );
       }
     },
     [runId]
@@ -285,18 +292,10 @@ export function useMultiTurnChat<
         // We have an active session - send as follow-up
         await sendFollowUp(text);
       } else {
-        // No active session - start a new one
-        // Create a user message in UI format
-        const userMessage: UIMessage<TMetadata, UIDataTypes> = {
-          id: `user-${Date.now()}`,
-          role: 'user',
-          parts: [{ type: 'text', text }],
-        };
-
         // Send the initial message to start the workflow
         await baseSendMessage({
           text,
-          metadata: { createdAt: Date.now() } as TMetadata,
+          metadata: { createdAt: Date.now() } as unknown as TMetadata,
         });
       }
     },

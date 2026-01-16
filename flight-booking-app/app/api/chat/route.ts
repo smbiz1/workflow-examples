@@ -3,6 +3,13 @@ import { start } from 'workflow/api';
 import { chat } from '@/workflows/chat';
 
 /**
+ * Uncomment the following line to simulate a long running
+ * Vercel Function timing out due to a long running agent.
+ * The client-side will automatically reconnect to the stream.
+ */
+// export const maxDuration = 8;
+
+/**
  * POST /api/chat
  *
  * Starts a new multi-turn chat session. The workflow will handle all subsequent

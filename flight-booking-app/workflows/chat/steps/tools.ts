@@ -1,6 +1,47 @@
-import { FatalError, sleep } from 'workflow';
+import { FatalError, sleep, getWritable } from 'workflow';
 import { z } from 'zod';
 import { bookingApprovalHook } from '../hooks/approval';
+import type { UIMessageChunk } from 'ai';
+
+/**
+ * Emit a tool-start event for realtime observability.
+ */
+async function emitToolStart(toolName: string) {
+  const writable = getWritable<UIMessageChunk>();
+  const writer = writable.getWriter();
+  try {
+    await writer.write({
+      type: 'data-workflow',
+      data: {
+        type: 'tool-start',
+        toolName,
+        timestamp: Date.now(),
+      },
+    } as UIMessageChunk);
+  } finally {
+    writer.releaseLock();
+  }
+}
+
+/**
+ * Emit a tool-end event for realtime observability.
+ */
+async function emitToolEnd(toolName: string) {
+  const writable = getWritable<UIMessageChunk>();
+  const writer = writable.getWriter();
+  try {
+    await writer.write({
+      type: 'data-workflow',
+      data: {
+        type: 'tool-end',
+        toolName,
+        timestamp: Date.now(),
+      },
+    } as UIMessageChunk);
+  } finally {
+    writer.releaseLock();
+  }
+}
 
 export const mockAirports: Record<
   string,
@@ -46,6 +87,7 @@ export async function searchFlights({
 }) {
   'use step';
 
+  await emitToolStart('searchFlights');
   console.log(`Searching flights from ${from} to ${to} on ${date}`);
 
   // Simulate API delay
@@ -95,10 +137,12 @@ export async function searchFlights({
     };
   });
 
-  return {
+  const result = {
     message: `Found ${generatedFlights.length} flights from ${from} to ${to} on ${date}`,
     flights: generatedFlights.sort((a, b) => a.price - b.price), // Sort by price
   };
+  await emitToolEnd('searchFlights');
+  return result;
 }
 
 /** Check flight status */
@@ -109,117 +153,127 @@ export async function checkFlightStatus({
 }) {
   'use step';
 
-  console.log(`Checking status for flight ${flightNumber}`);
+  await emitToolStart('checkFlightStatus');
+  try {
+    console.log(`Checking status for flight ${flightNumber}`);
 
-  // 10% chance of error to demonstrate retry
-  if (Math.random() < 0.1) {
-    throw new Error('Flight status service temporarily unavailable');
-  }
+    // 10% chance of error to demonstrate retry
+    if (Math.random() < 0.1) {
+      throw new Error('Flight status service temporarily unavailable');
+    }
 
-  // Generate random flight details
-  const airlines = [
-    'United Airlines',
-    'American Airlines',
-    'Delta Airlines',
-    'Southwest Airlines',
-    'JetBlue',
-  ];
-  const airports = [
-    'LAX',
-    'JFK',
-    'ORD',
-    'ATL',
-    'DFW',
-    'SFO',
-    'MIA',
-    'DEN',
-    'BOS',
-    'SEA',
-  ];
-  const statuses = [
-    'On Time',
-    'Delayed',
-    'Boarding',
-    'Departed',
-    'In Flight',
-    'Landed',
-  ];
+    // Generate random flight details
+    const airlines = [
+      'United Airlines',
+      'American Airlines',
+      'Delta Airlines',
+      'Southwest Airlines',
+      'JetBlue',
+    ];
+    const airports = [
+      'LAX',
+      'JFK',
+      'ORD',
+      'ATL',
+      'DFW',
+      'SFO',
+      'MIA',
+      'DEN',
+      'BOS',
+      'SEA',
+    ];
+    const statuses = [
+      'On Time',
+      'Delayed',
+      'Boarding',
+      'Departed',
+      'In Flight',
+      'Landed',
+    ];
 
-  // Random selections
-  const fromAirport = airports[Math.floor(Math.random() * airports.length)];
-  let toAirport = airports[Math.floor(Math.random() * airports.length)];
-  // Ensure different airports
-  while (toAirport === fromAirport) {
-    toAirport = airports[Math.floor(Math.random() * airports.length)];
-  }
+    // Random selections
+    const fromAirport = airports[Math.floor(Math.random() * airports.length)];
+    let toAirport = airports[Math.floor(Math.random() * airports.length)];
+    // Ensure different airports
+    while (toAirport === fromAirport) {
+      toAirport = airports[Math.floor(Math.random() * airports.length)];
+    }
 
-  // Generate times
-  const now = new Date();
-  const departureOffset = (Math.random() - 0.5) * 4 * 60 * 60 * 1000; // +/- 2 hours from now
-  const departureTime = new Date(now.getTime() + departureOffset);
-  const flightDuration = (60 + Math.floor(Math.random() * 240)) * 60 * 1000; // 1-5 hours
-  const arrivalTime = new Date(departureTime.getTime() + flightDuration);
+    // Generate times
+    const now = new Date();
+    const departureOffset = (Math.random() - 0.5) * 4 * 60 * 60 * 1000; // +/- 2 hours from now
+    const departureTime = new Date(now.getTime() + departureOffset);
+    const flightDuration = (60 + Math.floor(Math.random() * 240)) * 60 * 1000; // 1-5 hours
+    const arrivalTime = new Date(departureTime.getTime() + flightDuration);
 
-  // Determine gate based on status
-  const status = statuses[Math.floor(Math.random() * statuses.length)];
-  const gate = ['Boarding', 'Departed', 'In Flight', 'Landed'].includes(status)
-    ? `${['A', 'B', 'C', 'D'][Math.floor(Math.random() * 4)]}${
-        Math.floor(Math.random() * 30) + 1
-      }`
-    : Math.random() < 0.7
+    // Determine gate based on status
+    const status = statuses[Math.floor(Math.random() * statuses.length)];
+    const gate = ['Boarding', 'Departed', 'In Flight', 'Landed'].includes(status)
       ? `${['A', 'B', 'C', 'D'][Math.floor(Math.random() * 4)]}${
           Math.floor(Math.random() * 30) + 1
         }`
-      : 'TBD';
+      : Math.random() < 0.7
+        ? `${['A', 'B', 'C', 'D'][Math.floor(Math.random() * 4)]}${
+            Math.floor(Math.random() * 30) + 1
+          }`
+        : 'TBD';
 
-  // Add delay information if status is "Delayed"
-  const delayMinutes =
-    status === 'Delayed' ? Math.floor(Math.random() * 120) + 15 : 0;
-  const actualDepartureTime =
-    status === 'Delayed'
-      ? new Date(departureTime.getTime() + delayMinutes * 60 * 1000)
-      : departureTime;
-  const actualArrivalTime =
-    status === 'Delayed'
-      ? new Date(arrivalTime.getTime() + delayMinutes * 60 * 1000)
-      : arrivalTime;
+    // Add delay information if status is "Delayed"
+    const delayMinutes =
+      status === 'Delayed' ? Math.floor(Math.random() * 120) + 15 : 0;
+    const actualDepartureTime =
+      status === 'Delayed'
+        ? new Date(departureTime.getTime() + delayMinutes * 60 * 1000)
+        : departureTime;
+    const actualArrivalTime =
+      status === 'Delayed'
+        ? new Date(arrivalTime.getTime() + delayMinutes * 60 * 1000)
+        : arrivalTime;
 
-  return {
-    flightNumber: flightNumber.toUpperCase(),
-    status: status + (status === 'Delayed' ? ` (${delayMinutes} minutes)` : ''),
-    departure: departureTime.toISOString(),
-    arrival: arrivalTime.toISOString(),
-    actualDeparture: actualDepartureTime.toISOString(),
-    actualArrival: actualArrivalTime.toISOString(),
-    from: fromAirport,
-    to: toAirport,
-    airline: airlines[Math.floor(Math.random() * airlines.length)],
-    gate,
-    terminal: Math.floor(Math.random() * 4) + 1,
-  };
+    return {
+      flightNumber: flightNumber.toUpperCase(),
+      status: status + (status === 'Delayed' ? ` (${delayMinutes} minutes)` : ''),
+      departure: departureTime.toISOString(),
+      arrival: arrivalTime.toISOString(),
+      actualDeparture: actualDepartureTime.toISOString(),
+      actualArrival: actualArrivalTime.toISOString(),
+      from: fromAirport,
+      to: toAirport,
+      airline: airlines[Math.floor(Math.random() * airlines.length)],
+      gate,
+      terminal: Math.floor(Math.random() * 4) + 1,
+    };
+  } finally {
+    await emitToolEnd('checkFlightStatus');
+  }
 }
 
 /** Get airport information */
 export async function getAirportInfo({ airportCode }: { airportCode: string }) {
   'use step';
 
+  await emitToolStart('getAirportInfo');
   console.log(`Getting information for airport ${airportCode}`);
 
   const airport = mockAirports[airportCode.toUpperCase()];
 
   if (!airport) {
-    return {
+    const result = {
       error: `Airport code ${airportCode} not found`,
       suggestion: `Try one of these: ${Object.keys(mockAirports).join(', ')}`,
     };
+    await emitToolEnd('getAirportInfo');
+    return result;
   }
 
-  return {
+  const result = {
     code: airportCode.toUpperCase(),
     ...airport,
     terminals: Math.floor(Math.random() * 4) + 1,
     averageDelay: `${Math.floor(Math.random() * 30)} minutes`,
   };
+  await emitToolEnd('getAirportInfo');
+  return result;
 }
 
 /** Book a flight (mock) */
@@ -234,37 +288,42 @@ export async function bookFlight({
 }) {
   'use step';
 
-  console.log(`Booking flight ${flightNumber} for ${passengerName}`);
+  await emitToolStart('bookFlight');
+  try {
+    console.log(`Booking flight ${flightNumber} for ${passengerName}`);
 
-  // Simulate processing
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+    // Simulate processing
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
-  // 5% chance of seat unavailable
-  if (Math.random() < 0.05) {
-    throw new FatalError(
-      'Selected seat preference not available. Please try a different preference.'
-    );
+    // 5% chance of seat unavailable
+    if (Math.random() < 0.05) {
+      throw new FatalError(
+        'Selected seat preference not available. Please try a different preference.'
+      );
+    }
+
+    const confirmationNumber = `BK${Math.random()
+      .toString(36)
+      .substring(2, 8)
+      .toUpperCase()}`;
+    const seatNumber =
+      seatPreference === 'window'
+        ? `${Math.floor(Math.random() * 30) + 1}A`
+        : seatPreference === 'aisle'
+          ? `${Math.floor(Math.random() * 30) + 1}C`
+          : `${Math.floor(Math.random() * 30) + 1}B`;
+
+    return {
+      success: true,
+      confirmationNumber,
+      passengerName,
+      flightNumber,
+      seatNumber,
+      message: 'Flight booked successfully! Check your email for confirmation.',
+    };
+  } finally {
+    await emitToolEnd('bookFlight');
   }
-
-  const confirmationNumber = `BK${Math.random()
-    .toString(36)
-    .substring(2, 8)
-    .toUpperCase()}`;
-  const seatNumber =
-    seatPreference === 'window'
-      ? `${Math.floor(Math.random() * 30) + 1}A`
-      : seatPreference === 'aisle'
-        ? `${Math.floor(Math.random() * 30) + 1}C`
-        : `${Math.floor(Math.random() * 30) + 1}B`;
-
-  return {
-    success: true,
-    confirmationNumber,
-    passengerName,
-    flightNumber,
-    seatNumber,
-    message: 'Flight booked successfully! Check your email for confirmation.',
-  };
 }
 
 /** Check baggage allowance */
@@ -277,6 +336,7 @@ export async function checkBaggageAllowance({
 }) {
   'use step';
 
+  await emitToolStart('checkBaggageAllowance');
   console.log(`Checking baggage allowance for ${airline} ${ticketClass} class`);
 
   const allowances = {
@@ -288,7 +348,7 @@ export async function checkBaggageAllowance({
   const classKey = ticketClass.toLowerCase() as keyof typeof allowances;
   const allowance = allowances[classKey] || allowances.economy;
 
-  return {
+  const result = {
     airline,
     class: ticketClass,
     carryOnBags: allowance.carryOn,
@@ -296,6 +356,8 @@ export async function checkBaggageAllowance({
     maxWeightPerBag: allowance.maxWeight,
     oversizeFee: '$150 per bag',
   };
+  await emitToolEnd('checkBaggageAllowance');
+  return result;
 }
 
 async function executeSleep({ durationMs }: { durationMs: number }) {

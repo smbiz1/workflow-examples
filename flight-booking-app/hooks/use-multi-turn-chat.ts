@@ -246,8 +246,9 @@ export function useMultiTurnChat<
             'data' in part
           ) {
             const data = part.data as Record<string, unknown>;
-            // Create a unique key from event type and timestamp
-            const eventKey = `${data?.type}-${data?.timestamp}`;
+            // Create a unique key from all event data to avoid collisions
+            // (e.g., two different tool-start events at the same millisecond)
+            const eventKey = JSON.stringify(data);
             if (seenObservabilityEvents.has(eventKey)) {
               continue; // Skip duplicate observability event
             }

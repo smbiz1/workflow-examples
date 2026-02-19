@@ -4,9 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  workflow: 4.1.0-beta.57
-
 importers:
 
   .:
